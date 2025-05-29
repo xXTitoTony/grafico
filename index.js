@@ -1,10 +1,9 @@
-// index.js
 const express = require('express');
 const puppeteer = require('puppeteer');
 const fs = require('fs');
 const path = require('path');
 const app = express();
-const PORT = process.env.PORT;
+const PORT = process.env.PORT || 3000;
 
 app.use(express.json());
 
@@ -14,57 +13,67 @@ app.post('/generar', async (req, res) => {
   const rutaArchivo = path.join(__dirname, nombreArchivo);
 
   try {
+    console.log('⏳ Lanzando navegador...');
     const browser = await puppeteer.launch({
-      headless: 'new',
+      headless: true, // Clásico, no 'new'
       args: ['--no-sandbox', '--disable-setuid-sandbox']
     });
+
     const page = await browser.newPage();
-
-    // Navega al gráfico
     const url = `https://www.tradingview.com/chart/?symbol=${ticker}`;
-    await page.goto(url, { waitUntil: 'networkidle2' });
+    console.log(`🌐 Navegando a: ${url}`);
 
-    // Espera que cargue el chart
-    await page.waitForSelector('body');
+    await page.goto(url, {
+      waitUntil: 'networkidle2',
+      timeout: 60000
+    });
+
+    console.log('🕒 Esperando a que cargue el gráfico...');
     await new Promise(resolve => setTimeout(resolve, 8000));
 
-    // Inyecta script para abrir el panel de indicadores y buscar MACD
-    await page.evaluate(() => {
-      // Abre el panel de indicadores
-      const indicatorsButton = document.querySelector('[data-name="indicator-button"]');
-      if (indicatorsButton) indicatorsButton.click();
-    });
+    console.log('📈 Intentando abrir panel de indicadores...');
+    try {
+      await page.evaluate(() => {
+        const indicatorsButton = document.querySelector('[data-name="indicator-button"]');
+        if (indicatorsButton) indicatorsButton.click();
+      });
 
-    await new Promise(resolve => setTimeout(resolve, 2000));
+      await new Promise(resolve => setTimeout(resolve, 2000));
 
-    await page.evaluate(() => {
-      // Escribe "MACD" en el input de búsqueda
-      const input = document.querySelector('[data-role="search-input"] input');
-      if (input) {
-        input.value = 'MACD';
-        input.dispatchEvent(new Event('input', { bubbles: true }));
-      }
-    });
+      await page.evaluate(() => {
+        const input = document.querySelector('[data-role="search-input"] input');
+        if (input) {
+          input.value = 'MACD';
+          input.dispatchEvent(new Event('input', { bubbles: true }));
+        }
+      });
 
-    await new Promise(resolve => setTimeout(resolve, 1000));
+      await new Promise(resolve => setTimeout(resolve, 1000));
 
-    await page.evaluate(() => {
-      // Hace clic en el primer resultado (el indicador MACD)
-      const result = document.querySelector('[data-role="search-result"]');
-      if (result) result.click();
-    });
+      await page.evaluate(() => {
+        const result = document.querySelector('[data-role="search-result"]');
+        if (result) result.click();
+      });
 
-    // Espera a que se añada el indicador
-    await new Promise(resolve => setTimeout(resolve, 5000));
+      console.log('✅ MACD añadido');
+    } catch (macdError) {
+      console.log('⚠️ Error añadiendo MACD:', macdError.message);
+    }
 
-    // Toma la captura
+    console.log('📷 Capturando imagen...');
     await page.screenshot({ path: rutaArchivo, fullPage: true });
     await browser.close();
 
+    console.log('✅ Imagen generada. Enviando archivo...');
     res.sendFile(rutaArchivo, () => {
-      fs.unlinkSync(rutaArchivo);
+      fs.unlinkSync(rutaArchivo); // Borra el archivo después de enviarlo
     });
   } catch (err) {
+    console.error('❌ Error general:', err.message);
     res.status(500).json({ error: err.message });
   }
+});
+
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`🚀 Servidor corriendo en 0.0.0.0:${PORT}`);
 });
