@@ -19,11 +19,45 @@ app.post('/generar', async (req, res) => {
       args: ['--no-sandbox', '--disable-setuid-sandbox']
     });
     const page = await browser.newPage();
-    const url = `https://www.tradingview.com/chart/?symbol=${ticker}`;
 
+    // Navega al gráfico
+    const url = `https://www.tradingview.com/chart/?symbol=${ticker}`;
     await page.goto(url, { waitUntil: 'networkidle2' });
+
+    // Espera que cargue el chart
+    await page.waitForSelector('body');
     await new Promise(resolve => setTimeout(resolve, 8000));
 
+    // Inyecta script para abrir el panel de indicadores y buscar MACD
+    await page.evaluate(() => {
+      // Abre el panel de indicadores
+      const indicatorsButton = document.querySelector('[data-name="indicator-button"]');
+      if (indicatorsButton) indicatorsButton.click();
+    });
+
+    await new Promise(resolve => setTimeout(resolve, 2000));
+
+    await page.evaluate(() => {
+      // Escribe "MACD" en el input de búsqueda
+      const input = document.querySelector('[data-role="search-input"] input');
+      if (input) {
+        input.value = 'MACD';
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+      }
+    });
+
+    await new Promise(resolve => setTimeout(resolve, 1000));
+
+    await page.evaluate(() => {
+      // Hace clic en el primer resultado (el indicador MACD)
+      const result = document.querySelector('[data-role="search-result"]');
+      if (result) result.click();
+    });
+
+    // Espera a que se añada el indicador
+    await new Promise(resolve => setTimeout(resolve, 5000));
+
+    // Toma la captura
     await page.screenshot({ path: rutaArchivo, fullPage: true });
     await browser.close();
 
@@ -33,8 +67,4 @@ app.post('/generar', async (req, res) => {
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
-});
-
-app.listen(PORT, '0.0.0.0', () => {
-  console.log(`Servidor corriendo en 0.0.0.0:${PORT}`);
 });
